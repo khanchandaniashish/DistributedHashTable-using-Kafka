@@ -15,9 +15,6 @@ import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.ByteArraySerializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.slf4j.simple.SimpleLogger;
 import picocli.CommandLine;
 import picocli.CommandLine.Command;
 import picocli.CommandLine.Option;
@@ -26,7 +23,6 @@ import picocli.CommandLine.Parameters;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
-import java.time.Clock;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collection;
@@ -208,6 +204,17 @@ public class Main {
         }
         return 0;
     }
+
+    @Command
+    int replica(@Parameters(paramLabel = "kafkaHost:port") String server,
+                @Parameters(paramLabel = "name") String name,
+                @Parameters(paramLabel = "port") int port,
+                @Parameters(paramLabel = "snapshotDecider") int snapshotDecider,
+                @Parameters(paramLabel = "topicPrefix") String topicPrefix) throws IOException, InterruptedException {
+        new Replica(server, name, port, snapshotDecider, topicPrefix).letsGo();
+        return 0;
+    }
+
     public static void main(String[] args) {
         System.exit(new CommandLine(new Main()).execute(args));
     }
