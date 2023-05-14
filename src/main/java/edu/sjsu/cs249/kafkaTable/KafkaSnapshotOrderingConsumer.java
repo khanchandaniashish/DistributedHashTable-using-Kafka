@@ -26,6 +26,9 @@ public class KafkaSnapshotOrderingConsumer {
 
     Consumer<String, byte[]> consumer;
 
+    Consumer<String, byte[]> secondConsumerConfig;
+
+
     KafkaSnapshotOrderingConsumer(String bootstrapServer, ReplicatedTable replicatedTable, Producer operationsProducer) {
         this.bootstrapServer = bootstrapServer;
         this.replicatedTable = replicatedTable;
@@ -41,6 +44,8 @@ public class KafkaSnapshotOrderingConsumer {
         //TODO: Parameterize Group ID later
         properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "AshishConsumerGroupSnapshotOrdering");
         consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new ByteArrayDeserializer());
+        properties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG,"1");
+        secondConsumerConfig = new KafkaConsumer<>(properties, new StringDeserializer(), new ByteArrayDeserializer());
         //Seeks consumer to specified offset and inititialises listener from there
         System.out.println("lastSeenOrderingOffset is :"+lastSeenOrderingOffset);
         initializeAndSeekConsumer(consumer,lastSeenOrderingOffset+1);
@@ -71,16 +76,17 @@ public class KafkaSnapshotOrderingConsumer {
 
     private void resetOffsetToBeginning() {
         //Reset the offset to zero
-        System.out.println("Resetting Ordering Snapshot ot beginning");
+        System.out.println("Resetting Ordering Snapshot to beginning");
         consumer.unsubscribe();
-        initializeAndSeekConsumer(consumer,lastSeenOperationsOffset);
+        initializeAndSeekConsumer(secondConsumerConfig,lastSeenOperationsOffset);
 //        Collection<TopicPartition> collection = consumer.assignment();
 //        collection.forEach(t -> consumer.seek(t, 0));
     }
 
     public boolean isTimeToPublishSnapshot(){
-        ConsumerRecords<String, byte[]> consumerRecords = consumer.poll(Duration.ofSeconds(0));
-        System.out.println("polling for 0 seconds");
+        ConsumerRecords<String, byte[]> consumerRecords = secondConsumerConfig.poll(Duration.ofSeconds(1));
+        System.out.println("polling for 1 seconds");
+        //TODO HERE
         System.out.println("Consumer records count is  "+ consumerRecords.count());
         for (var consumerRecord : consumerRecords) {
             try {
@@ -99,11 +105,11 @@ public class KafkaSnapshotOrderingConsumer {
         return false;
     }
 
-    private  void initializeAndSeekConsumer(Consumer<String, byte[]> consumer,Long offsetToBeginFrom) {
+    private  void initializeAndSeekConsumer(Consumer<String, byte[]> passedConsumer,Long offsetToBeginFrom) {
         System.out.println("Called initializeAndSeekConsumer with offsetToBeginFrom: "+offsetToBeginFrom);
         var sem = new Semaphore(0);
 
-        consumer.subscribe(List.of(SNAPSHOT_ORDERING_TOPIC), new ConsumerRebalanceListener() {
+        passedConsumer.subscribe(List.of(SNAPSHOT_ORDERING_TOPIC), new ConsumerRebalanceListener() {
             @Override
             public void onPartitionsRevoked(Collection<TopicPartition> collection) {
                 System.out.println("Didn't expect the revoke!");
@@ -113,13 +119,12 @@ public class KafkaSnapshotOrderingConsumer {
             public void onPartitionsAssigned(Collection<TopicPartition> collection) {
                 System.out.println("Partition assigned");
                 System.out.println("SEEKING");
-                collection.forEach(t -> consumer.seek(t, offsetToBeginFrom+1));
+                collection.forEach(t -> passedConsumer.seek(t, offsetToBeginFrom+1));
                 System.out.println("SEEK DONE");
                 sem.release();
             }
         });
-        System.out.println("first poll count: " + consumer.poll(offsetToBeginFrom+1).count());
-
+        System.out.println("first poll count: " + passedConsumer.poll(offsetToBeginFrom+1).count());
         try {
             sem.acquire();
         } catch (InterruptedException e) {

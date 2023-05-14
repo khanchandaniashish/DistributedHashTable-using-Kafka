@@ -97,6 +97,8 @@ public class KafkaTableGrpcService extends KafkaTableGrpc.KafkaTableImplBase {
             }
         }
         // received the req already
+        //TODO CHECK THIS
+        //ClientTxnLog.put(clientXid.getClientid(), clientXid.getCounter());
         System.out.println("Valid Client request from Client : " + clientXid.getClientid() + " with counter : " + clientXid.getCounter());
         return true;
     }
