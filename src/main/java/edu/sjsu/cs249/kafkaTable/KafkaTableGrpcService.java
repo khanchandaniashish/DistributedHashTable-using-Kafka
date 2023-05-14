@@ -16,11 +16,14 @@ public class KafkaTableGrpcService extends KafkaTableGrpc.KafkaTableImplBase {
 
     HashMap<ClientXid, StreamObserver<IncResponse>> incResponseHashMap;
 
+    HashMap<ClientXid, StreamObserver<GetResponse>> getResponseHashMap;
+
     public KafkaTableGrpcService(Replica replica, ReplicatedTable replicatedTable) {
         this.replicatedTable = replicatedTable;
         this.replica = replica;
         ClientTxnLog = replica.ClientTxnLog;
         incResponseHashMap = replica.incResponseHashMap;
+        getResponseHashMap = replica.getResponseHashMap;
     }
 
     /**
@@ -56,12 +59,25 @@ public class KafkaTableGrpcService extends KafkaTableGrpc.KafkaTableImplBase {
     @Override
     public void get(GetRequest request, StreamObserver<GetResponse> responseObserver) {
         //publish to OP topic
-        System.out.println("publishing get req to kafka OP topic : " + OPERATIONS_TOPIC);
-        PublishedItem publishedItem = PublishedItem.newBuilder().setGet(request).build();
-        replica.sendMessage(OPERATIONS_TOPIC, publishedItem);
-        System.out.println("published get req to kafka OP topic");
-    }
+        ClientXid clientXid = request.getXid();
 
+        if (isValidClientReq(clientXid)) {
+            // publish to OP topic
+            System.out.println("publishing INC req to kafka OP topic : " + OPERATIONS_TOPIC);
+            PublishedItem publishedItem = PublishedItem.newBuilder().setGet(request).build();
+//            replica.sendMessage(OPERATIONS_TOPIC, publishedItem);
+            getResponseHashMap.put(clientXid, responseObserver);
+            //Update the Client Transaction map
+            recordClientTransaction(clientXid);
+            System.out.println("publishing get req to kafka OP topic : " + OPERATIONS_TOPIC);
+            replica.sendMessage(OPERATIONS_TOPIC, publishedItem);
+            System.out.println("published get req to kafka OP topic");
+        } else {
+            System.out.println("RETURNING get ONCOMPLETED for INVALID req with client id : " + clientXid.getClientid() + " with counter :" + clientXid.getCounter());
+            responseObserver.onNext(GetResponse.newBuilder().build());
+            responseObserver.onCompleted();
+        }
+    }
 
     void recordClientTransaction(ClientXid clientXid) {
         System.out.println("Adding Client request to ClientTxnMap from Client : " + clientXid.getClientid() + " with counter : " + clientXid.getCounter());

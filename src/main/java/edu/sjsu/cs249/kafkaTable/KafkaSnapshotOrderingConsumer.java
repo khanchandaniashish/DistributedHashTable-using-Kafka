@@ -13,7 +13,7 @@ import java.time.Duration;
 import java.util.*;
 import java.util.concurrent.Semaphore;
 
-import static edu.sjsu.cs249.kafkaTable.Replica.SNAPSHOT_ORDERING_TOPIC;
+import static edu.sjsu.cs249.kafkaTable.Replica.*;
 
 /**
  * @author ashish
@@ -22,15 +22,13 @@ public class KafkaSnapshotOrderingConsumer {
 
     String bootstrapServer;
     ReplicatedTable replicatedTable;
-
-    Long seekToOffset;
-
     Producer producer;
 
-    KafkaSnapshotOrderingConsumer(String bootstrapServer, ReplicatedTable replicatedTable, Long seekToOffset, Producer operationsProducer) {
+    Consumer<String, byte[]> consumer;
+
+    KafkaSnapshotOrderingConsumer(String bootstrapServer, ReplicatedTable replicatedTable, Producer operationsProducer) {
         this.bootstrapServer = bootstrapServer;
         this.replicatedTable = replicatedTable;
-        this.seekToOffset = seekToOffset;
         this.producer = operationsProducer;
     }
 
@@ -42,10 +40,10 @@ public class KafkaSnapshotOrderingConsumer {
         properties.setProperty(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "10000");
         //TODO: Parameterize Group ID later
         properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "AshishConsumerGroupSnapshotOrdering");
-        Consumer<String, byte[]> consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new ByteArrayDeserializer());
-
+        consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new ByteArrayDeserializer());
         //Seeks consumer to specified offset and inititialises listener from there
-        initializeAndSeekConsumer(consumer,seekToOffset);
+        System.out.println("lastSeenOrderingOffset is :"+lastSeenOrderingOffset);
+        initializeAndSeekConsumer(consumer,lastSeenOrderingOffset+1);
         ConsumerRecords<String, byte[]> consumerRecords = consumer.poll(Duration.ofSeconds(1));
         joinTheSnapshotOrdering(consumerRecords);
     }
@@ -55,8 +53,10 @@ public class KafkaSnapshotOrderingConsumer {
             try {
                 var message = SnapshotOrdering.parseFrom(consumerRecord.value());
                 System.out.println("Consumed message from KafkaSnapshotOrderingConsumer: " + message);
+                //TODO Case where you are already in the Q.. where to read from?
                 if (message.getReplicaId().equals(Replica.name)) {
                     System.out.println("Found myself already in SNAP ORDERING QUE. Skipping the publish to SO");
+                    resetOffsetToBeginning();
                     return;
                 }
             } catch (InvalidProtocolBufferException e) {
@@ -64,11 +64,45 @@ public class KafkaSnapshotOrderingConsumer {
                 e.printStackTrace();
             }
         }
+        //Publish message to join the Q
         sendMessage(SnapshotOrdering.newBuilder().setReplicaId(Replica.name).build());
+        resetOffsetToBeginning();
+    }
+
+    private void resetOffsetToBeginning() {
+        //Reset the offset to zero
+        System.out.println("Resetting Ordering Snapshot ot beginning");
+        consumer.unsubscribe();
+        initializeAndSeekConsumer(consumer,lastSeenOperationsOffset);
+//        Collection<TopicPartition> collection = consumer.assignment();
+//        collection.forEach(t -> consumer.seek(t, 0));
+    }
+
+    public boolean isTimeToPublishSnapshot(){
+        ConsumerRecords<String, byte[]> consumerRecords = consumer.poll(Duration.ofSeconds(0));
+        System.out.println("polling for 0 seconds");
+        System.out.println("Consumer records count is  "+ consumerRecords.count());
+        for (var consumerRecord : consumerRecords) {
+            try {
+                var message = SnapshotOrdering.parseFrom(consumerRecord.value());
+                System.out.println("Consumed message from KafkaSnapshotOrderingConsumer: " + message);
+                System.out.println("Consumed message from KafkaSnapshotOrderingConsumer with replID: " + message.getReplicaId());
+                if (message.getReplicaId().equals(Replica.name)) {
+                    System.out.println("Found myself next in SNAP ORDERING QUE. I gotta publish the snapshot");
+                    return true;
+                }
+            } catch (InvalidProtocolBufferException e) {
+                System.out.println("INVALID MESSAGE TYPE Received");
+                e.printStackTrace();
+            }
+        }
+        return false;
     }
 
     private  void initializeAndSeekConsumer(Consumer<String, byte[]> consumer,Long offsetToBeginFrom) {
+        System.out.println("Called initializeAndSeekConsumer with offsetToBeginFrom: "+offsetToBeginFrom);
         var sem = new Semaphore(0);
+
         consumer.subscribe(List.of(SNAPSHOT_ORDERING_TOPIC), new ConsumerRebalanceListener() {
             @Override
             public void onPartitionsRevoked(Collection<TopicPartition> collection) {
@@ -79,12 +113,12 @@ public class KafkaSnapshotOrderingConsumer {
             public void onPartitionsAssigned(Collection<TopicPartition> collection) {
                 System.out.println("Partition assigned");
                 System.out.println("SEEKING");
-                collection.forEach(t -> consumer.seek(t, offsetToBeginFrom));
+                collection.forEach(t -> consumer.seek(t, offsetToBeginFrom+1));
                 System.out.println("SEEK DONE");
                 sem.release();
             }
         });
-        System.out.println("first poll count: " + consumer.poll(0).count());
+        System.out.println("first poll count: " + consumer.poll(offsetToBeginFrom+1).count());
 
         try {
             sem.acquire();

@@ -2,6 +2,8 @@ package edu.sjsu.cs249.kafkaTable;
 
 import io.grpc.stub.StreamObserver;
 
+import static edu.sjsu.cs249.kafkaTable.Replica.ClientTxnLog;
+
 /**
  * @author ashish
  */
@@ -20,6 +22,7 @@ public class KafkaTableDebugGrpcService extends KafkaTableDebugGrpc.KafkaTableDe
     @Override
     public void debug(KafkaTableDebugRequest request, StreamObserver<KafkaTableDebugResponse> responseObserver) {
         System.out.println(replica.replicatedTable.toString());
+        System.out.println(ClientTxnLog);
         responseObserver.onNext(KafkaTableDebugResponse.newBuilder().build());
         responseObserver.onCompleted();
     }

@@ -10,9 +10,7 @@ public class ReplicatedTable {
 
     HashMap<String,Integer> hashtable;
 
-    ReplicatedTable(){
-        hashtable = new HashMap<>();
-    }
+    ReplicatedTable(){hashtable = new HashMap<>();}
 
     Integer get(String key){return hashtable.get(key);}
 

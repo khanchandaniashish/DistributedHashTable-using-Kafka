@@ -27,7 +27,8 @@ public class Replica {
 
     public static Long lastSeenOperationsOffset;
 
-    public static Long lastSeenOrderingOffset;
+    //TODO getting null FFS
+    public static Long lastSeenOrderingOffset = -1L;
 
     public static String OPERATIONS_TOPIC;
     public static String SNAPSHOT_TOPIC;
@@ -41,6 +42,8 @@ public class Replica {
 
     HashMap<ClientXid, StreamObserver<IncResponse>> incResponseHashMap;
 
+    HashMap<ClientXid, StreamObserver<GetResponse>> getResponseHashMap;
+
     KafkaSnapshotOrderingConsumer kafkaSnapshotOrderingConsumer;
 
     KafkaSnapshotConsumer kafkaSnapshotConsumer;
@@ -49,6 +52,7 @@ public class Replica {
     public Replica(String server, String name, int port, int snapshotDecider, String topicPrefix) {
         ClientTxnLog = new HashMap<>();
         incResponseHashMap = new HashMap<>();
+        getResponseHashMap = new HashMap<>();
         this.bootstrapServer = server;
         this.name = name;
         this.port = port;
@@ -66,12 +70,12 @@ public class Replica {
         initOperationsProducer();
         kafkaSnapshotConsumer = new KafkaSnapshotConsumer(bootstrapServer, replicatedTable, 0L, kafkaProducer);
         kafkaSnapshotConsumer.run();
-        kafkaSnapshotOrderingConsumer = new KafkaSnapshotOrderingConsumer(bootstrapServer, replicatedTable, lastSeenOrderingOffset, kafkaProducer);
+        kafkaSnapshotOrderingConsumer = new KafkaSnapshotOrderingConsumer(bootstrapServer, replicatedTable, kafkaProducer);
         kafkaSnapshotOrderingConsumer.run();
+        //before this next line
         System.out.println("STARTINGGG OPSSSS");
-        operationsConsumer = new KafkaOperationsConsumer(bootstrapServer, replicatedTable, incResponseHashMap);
-        operationsConsumer.run();
-
+        operationsConsumer = new KafkaOperationsConsumer(bootstrapServer, replicatedTable, incResponseHashMap, kafkaSnapshotOrderingConsumer,kafkaSnapshotConsumer, getResponseHashMap);
+        operationsConsumer.start();
     }
 
     private void initOperationsProducer() {

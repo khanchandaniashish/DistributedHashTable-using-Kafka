@@ -33,12 +33,20 @@ public class KafkaOperationsConsumer extends Thread {
     String bootstrapServer;
     ReplicatedTable replicatedTable;
     HashMap<ClientXid, StreamObserver<IncResponse>> incResponseHashMap;
-    //TODO GET Response builder ?
 
-    KafkaOperationsConsumer(String bootstrapServer, ReplicatedTable replicatedTable, HashMap<ClientXid, StreamObserver<IncResponse>> incResponseHashMap) {
+    HashMap<ClientXid, StreamObserver<GetResponse>> getResponseHashMap;
+
+    KafkaSnapshotOrderingConsumer kafkaSnapshotOrderingConsumer;
+
+    KafkaSnapshotConsumer kafkaSnapshotConsumer;
+
+    KafkaOperationsConsumer(String bootstrapServer, ReplicatedTable replicatedTable, HashMap<ClientXid, StreamObserver<IncResponse>> incResponseHashMap, KafkaSnapshotOrderingConsumer kafkaSnapshotOrderingConsumer, KafkaSnapshotConsumer kafkaSnapshotConsumer,HashMap<ClientXid, StreamObserver<GetResponse>> getResponseHashMap) {
         this.bootstrapServer = bootstrapServer;
         this.replicatedTable = replicatedTable;
         this.incResponseHashMap = incResponseHashMap;
+        this.getResponseHashMap = getResponseHashMap;
+        this.kafkaSnapshotOrderingConsumer= kafkaSnapshotOrderingConsumer;
+        this.kafkaSnapshotConsumer = kafkaSnapshotConsumer;
     }
 
     @Override
@@ -85,36 +93,49 @@ public class KafkaOperationsConsumer extends Thread {
             ConsumerRecords<String, byte[]> consumerRecords = consumer.poll(Duration.ofSeconds(1));
 
             consumerRecords.forEach(record -> {
-                lastSeenOperationsOffset = record.offset();
                 System.out.printf("offset = %d, key = %s, value = %s%n", lastSeenOperationsOffset, record.key(), Arrays.toString(record.value()));
-                PublishedItem message = null;
-                try {
-//                    message = SimpleMessage.parseFrom(record.value());
-                    message = PublishedItem.parseFrom(record.value());
-                    if (message.hasInc()) {
-                        doInc(message);
-                    } else {
-                        Integer res = doGet(message);
-                        System.out.println("DoGet result = " + res);
+                if (record.offset() >= lastSeenOperationsOffset) {
+                    lastSeenOperationsOffset = record.offset();
+                    PublishedItem message = null;
+                    try {
+                        message = PublishedItem.parseFrom(record.value());
+                        if (message.hasInc()) {
+                            doInc(message);
+                        } else {
+                            Integer res = doGet(message);
+                            System.out.println("DoGet result = " + res);
+                        }
+                    } catch (InvalidProtocolBufferException e) {
+                        System.out.println("INVALID MESSAGE TYPE Recieved");
+                        e.printStackTrace();
                     }
-                    //TODO handle returning the response observer if you were the originator back to GRPC
-
-                } catch (InvalidProtocolBufferException e) {
-                    System.out.println("INVALID MESSAGE TYPE Recieved");
-                    e.printStackTrace();
+                    System.out.println("Consumed message : " + message);
+                    if (lastSeenOperationsOffset % Replica.snapshotDecider == 0) {
+                        System.out.println("It's my time to take a snapshot as lastSeenOffset " + lastSeenOperationsOffset + " % " + snapshotDecider + " is zero");
+                        if (kafkaSnapshotOrderingConsumer.isTimeToPublishSnapshot()) {
+                            System.out.println("it is indeed time to take a snapshot");
+                            kafkaSnapshotConsumer.publishSnapshot();
+                            System.out.println("it is done! took a snapshot and published it");
+                        }
+                    }
                 }
-                System.out.println("Consumed message : " + message);
-                if (lastSeenOperationsOffset % Replica.snapshotDecider == 0) {
-                    System.out.println("It's my time to take a snapshot as lastSeenOffset " + lastSeenOperationsOffset + " % " + snapshotDecider + " is zero");
-                    //TODO Call snapshot decider here
-                }
-            });
+            else{
+                System.out.println("Ignoring the message as the offset recieved from kafka operations topic was less than my lastSeenOffset");
+            }
+        });
         }
-
     }
 
     private Integer doGet(PublishedItem message) {
-        return replicatedTable.get(message.getGet().getKey());
+        Integer res = replicatedTable.get(message.getGet().getKey());
+        if(Objects.isNull(res)) res = 0;
+        if (getResponseHashMap.containsKey(message.getGet().getXid())) {
+            System.out.println("RETURNING GET ON COMPLETED for client id : " + message.getGet().getXid().getClientid() + " with counter :" + message.getGet().getXid().getCounter());
+            StreamObserver<GetResponse> observer = getResponseHashMap.get(message.getGet().getXid());
+            observer.onNext(GetResponse.newBuilder().setValue(res).build());
+            observer.onCompleted();
+        }
+        return res;
     }
 
     private void doInc(PublishedItem message) {
