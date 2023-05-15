@@ -44,7 +44,7 @@ public class KafkaTableGrpcService extends KafkaTableGrpc.KafkaTableImplBase {
                 incResponseHashMap.put(clientXid, responseObserver);
                 //Update the Client Transaction map
                 //TODO TESTING THIS
-                recordClientTransaction(clientXid);
+//                recordClientTransaction(clientXid);
                 System.out.println("published inc req to kafka op topic");
             } else {
                 System.out.println("RETURNING INC ONCOMPLETED for INVALID req with client id : " + clientXid.getClientid() + " with counter :" + clientXid.getCounter());

@@ -127,7 +127,7 @@ public class KafkaOperationsConsumer extends Thread {
 
     private Integer doGet(PublishedItem message) {
         Integer res =  null;
-//        if (isValidClientReq(message.getGet().getXid())) {
+        if (isValidClientReq(message.getGet().getXid())) {
             res = replicatedTable.get(message.getGet().getKey());
             if (Objects.isNull(res)) res = 0;
             System.out.println("Adding to ClientTxnLog");
@@ -135,54 +135,43 @@ public class KafkaOperationsConsumer extends Thread {
             System.out.println("Added to ClientTxnLog");
             if (getResponseHashMap.containsKey(message.getGet().getXid())) {
                 System.out.println("RETURNING GET ON COMPLETED for client id : " + message.getGet().getXid().getClientid() + " with counter :" + message.getGet().getXid().getCounter());
-                StreamObserver<GetResponse> observer = getResponseHashMap.get(message.getGet().getXid());
-//                if (!Objects.isNull(observer)) {
+                StreamObserver<GetResponse> observer = getResponseHashMap.remove(message.getGet().getXid());
                     observer.onNext(GetResponse.newBuilder().setValue(res).build());
                     observer.onCompleted();
-//                    getResponseHashMap.remove(message.getInc().getXid());
-//                }
+                }
+        } else {
+            System.out.println("DUPLICATE GET REQ RECVD from kafka consumer..ignoringg");
+            if (getResponseHashMap.containsKey(message.getGet().getXid())) {
+                StreamObserver<GetResponse> observer = getResponseHashMap.remove(message.getGet().getXid());
+                    observer.onNext(GetResponse.newBuilder().build());
+                    observer.onCompleted();
             }
-//        } else {
-//            System.out.println("DUPLICATE GET REQ RECVD from kafka consumer..ignoringg");
-//            if (getResponseHashMap.containsKey(message.getGet().getXid())) {
-//                StreamObserver<GetResponse> observer = getResponseHashMap.get(message.getGet().getXid());
-////                if (!Objects.isNull(observer)) {
-//                    observer.onNext(GetResponse.newBuilder().build());
-//                    observer.onCompleted();
-////                    getResponseHashMap.remove(message.getInc().getXid());
-////                }
-//            }
-//        }
+        }
         return res;
     }
 
     private void doInc(PublishedItem message) {
-//        if (isValidClientReq(message.getInc().getXid())) {
+        if (isValidClientReq(message.getInc().getXid())) {
             replicatedTable.inc(message.getInc().getKey(), message.getInc().getIncValue());
             System.out.println("Adding to ClientTxnLog");
             ClientTxnLog.put(message.getInc().getXid().getClientid(), message.getInc().getXid().getCounter());
             System.out.println("Added to ClientTxnLog");
             if (incResponseHashMap.containsKey(message.getInc().getXid())) {
                 System.out.println("RETURNING INC ONCOMPLETED for client id : " + message.getInc().getXid().getClientid() + " with counter :" + message.getInc().getXid().getCounter());
-                StreamObserver<IncResponse> observer = incResponseHashMap.get(message.getInc().getXid());
-//                if (!Objects.isNull(observer)) {
+                StreamObserver<IncResponse> observer = incResponseHashMap.remove(message.getInc().getXid());
                     observer.onNext(IncResponse.newBuilder().build());
-
                     observer.onCompleted();
-                    incResponseHashMap.remove(message.getInc().getXid());
-//                }
+//                    incResponseHashMap.remove(message.getInc().getXid());
             }
-//        }else {
-//            System.out.println("DUPLICATE INC REQ RECVD from kafka consumer..ignoringg");
-//            if (incResponseHashMap.containsKey(message.getInc().getXid())) {
-//                StreamObserver<IncResponse> observer = incResponseHashMap.get(message.getGet().getXid());
-////                if(!Objects.isNull(observer)) {
-//                    observer.onNext(IncResponse.newBuilder().build());
-//                    observer.onCompleted();
-////                    incResponseHashMap.remove(message.getInc().getXid());
-////                }
-//            }
-//        }
+        } else {
+            System.out.println("DUPLICATE INC REQ RECVD from kafka consumer..ignoringg");
+            if (incResponseHashMap.containsKey(message.getInc().getXid())) {
+                    StreamObserver<IncResponse> observer = incResponseHashMap.remove(message.getInc().getXid());
+                    observer.onNext(IncResponse.newBuilder().build());
+                    observer.onCompleted();
+//                    incResponseHashMap.remove(message.getInc().getXid());
+            }
+        }
     }
 
     public boolean isValidClientReq(ClientXid clientXid) {
