@@ -2,7 +2,7 @@ package edu.sjsu.cs249.kafkaTable;
 
 import io.grpc.stub.StreamObserver;
 
-import static edu.sjsu.cs249.kafkaTable.Replica.ClientTxnLog;
+import static edu.sjsu.cs249.kafkaTable.Replica.*;
 
 /**
  * @author ashish
@@ -23,8 +23,11 @@ public class KafkaTableDebugGrpcService extends KafkaTableDebugGrpc.KafkaTableDe
     public void debug(KafkaTableDebugRequest request, StreamObserver<KafkaTableDebugResponse> responseObserver) {
         System.out.println(replica.replicatedTable.toString());
         System.out.println(ClientTxnLog);
-        responseObserver.onNext(KafkaTableDebugResponse.newBuilder().build());
+        System.out.println("Debug GRPC called");
+        Snapshot snapshot = Snapshot.newBuilder().setReplicaId(name).putAllTable(replica.replicatedTable.hashtable).setOperationsOffset(lastSeenOperationsOffset).putAllClientCounters(ClientTxnLog).setSnapshotOrderingOffset(lastSeenOrderingOffset).build();
+        responseObserver.onNext(KafkaTableDebugResponse.newBuilder().setSnapshot(snapshot).build());
         responseObserver.onCompleted();
+        System.out.println("Debug GRPC returned");
     }
 
     /**

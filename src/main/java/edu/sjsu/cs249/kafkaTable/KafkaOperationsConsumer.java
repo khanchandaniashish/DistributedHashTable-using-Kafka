@@ -51,100 +51,155 @@ public class KafkaOperationsConsumer extends Thread {
 
     @Override
     public void run() {
-        System.out.println("STARTINGGG OPDS TOPICC");
-        var properties = new Properties();
-        properties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServer);
-        properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        properties.setProperty(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "10000");
-        //TODO: Parameterize Group ID later
-        properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, "AshishConsumerGroup");
-        Consumer<String, byte[]> consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new ByteArrayDeserializer());
+            System.out.println("STARTINGGG OPDS TOPICC");
+            var properties = new Properties();
+            properties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServer);
+            properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+            properties.setProperty(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "10000");
+            //TODO: Parameterize Group ID later
+            properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, name + "ConsumerGroup");
+            Consumer<String, byte[]> consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new ByteArrayDeserializer());
 
-        var sem = new Semaphore(0);
-        consumer.subscribe(List.of(OPERATIONS_TOPIC), new ConsumerRebalanceListener() {
-            @Override
-            public void onPartitionsRevoked(Collection<TopicPartition> collection) {
-                System.out.println("Didn't expect the revoke!");
-            }
-
-            @Override
-            public void onPartitionsAssigned(Collection<TopicPartition> collection) {
-                System.out.println("Partition assigned");
-                System.out.println("SEEKING");
-                collection.forEach(t -> consumer.seek(t, 0));
-                System.out.println("SEEK DONE");
-                sem.release();
-            }
-        });
-        //TODO Added +1 ?
-        System.out.println("lastSeenOrderingOffset is :"+ lastSeenOrderingOffset);
-        lastSeenOperationsOffset = Objects.isNull(lastSeenOperationsOffset) ? 0 : lastSeenOperationsOffset;
-        System.out.println("first poll count: " + consumer.poll(lastSeenOperationsOffset +1).count());
-        try {
-            sem.acquire();
-        } catch (InterruptedException e) {
-            e.printStackTrace();
-        }
-
-        System.out.println("Ready to consume at " + new Date());
-        System.out.println("Consumer successfully initialized");
-
-        while (true) {
-            ConsumerRecords<String, byte[]> consumerRecords = consumer.poll(Duration.ofSeconds(1));
-
-            consumerRecords.forEach(record -> {
-                System.out.printf("offset = %d, key = %s, value = %s%n", lastSeenOperationsOffset, record.key(), Arrays.toString(record.value()));
-                if (record.offset() >= lastSeenOperationsOffset) {
-                    lastSeenOperationsOffset = record.offset();
-                    PublishedItem message = null;
-                    try {
-                        message = PublishedItem.parseFrom(record.value());
-                        if (message.hasInc()) {
-                            doInc(message);
-                        } else {
-                            Integer res = doGet(message);
-                            System.out.println("DoGet result = " + res);
-                        }
-                    } catch (InvalidProtocolBufferException e) {
-                        System.out.println("INVALID MESSAGE TYPE Recieved");
-                        e.printStackTrace();
-                    }
-                    System.out.println("Consumed message : " + message);
-                    if (lastSeenOperationsOffset % Replica.snapshotDecider == 0) {
-                        System.out.println("It's my time to take a snapshot as lastSeenOffset " + lastSeenOperationsOffset + " % " + snapshotDecider + " is zero");
-                        if (kafkaSnapshotOrderingConsumer.isTimeToPublishSnapshot()) {
-                            System.out.println("it is indeed time to take a snapshot");
-                            kafkaSnapshotConsumer.publishSnapshot();
-                            System.out.println("it is done! took a snapshot and published it");
-                        }
-                    }
+            var sem = new Semaphore(0);
+            consumer.subscribe(List.of(OPERATIONS_TOPIC), new ConsumerRebalanceListener() {
+                @Override
+                public void onPartitionsRevoked(Collection<TopicPartition> collection) {
+                    System.out.println("Didn't expect the revoke!");
                 }
-            else{
-                System.out.println("Ignoring the message as the offset recieved from kafka operations topic was less than my lastSeenOffset");
+
+                @Override
+                public void onPartitionsAssigned(Collection<TopicPartition> collection) {
+                    System.out.println("Partition assigned");
+                    System.out.println("SEEKING");
+                    collection.forEach(t -> consumer.seek(t, 0));
+                    System.out.println("SEEK DONE");
+                    sem.release();
+                }
+            });
+            //TODO Added +1 ?
+            System.out.println("lastSeenOrderingOffset is :" + lastSeenOrderingOffset);
+            lastSeenOperationsOffset = Objects.isNull(lastSeenOperationsOffset) ? 0 : lastSeenOperationsOffset;
+            System.out.println("first poll count: " + consumer.poll(lastSeenOperationsOffset + 1).count());
+            try {
+                sem.acquire();
+            } catch (InterruptedException e) {
+                e.printStackTrace();
             }
-        });
+
+            System.out.println("Ready to consume at " + new Date());
+            System.out.println("Consumer successfully initialized");
+
+            while (true) {
+                ConsumerRecords<String, byte[]> consumerRecords = consumer.poll(Duration.ofSeconds(1));
+                consumerRecords.forEach(record -> {
+                    System.out.printf("offset = %d, key = %s, value = %s%n", lastSeenOperationsOffset, record.key(), Arrays.toString(record.value()));
+                    if (record.offset() >= lastSeenOperationsOffset) {
+                        lastSeenOperationsOffset = record.offset();
+                        PublishedItem message = null;
+                        try {
+                            message = PublishedItem.parseFrom(record.value());
+                            if (message.hasInc()) {
+                                doInc(message);
+                            } else {
+                                Integer res = doGet(message);
+                                System.out.println("DoGet result = " + res);
+                            }
+                        } catch (InvalidProtocolBufferException e) {
+                            System.out.println("INVALID MESSAGE TYPE Recieved");
+                            e.printStackTrace();
+                        }
+                        System.out.println("Consumed message : " + message);
+                        if (lastSeenOperationsOffset % Replica.snapshotDecider == 0) {
+                            System.out.println("It's my time to take a snapshot as lastSeenOffset " + lastSeenOperationsOffset + " % " + snapshotDecider + " is zero");
+                            if (kafkaSnapshotOrderingConsumer.isTimeToPublishSnapshot()) {
+                                System.out.println("it is indeed time to take a snapshot");
+                                kafkaSnapshotConsumer.publishSnapshot();
+                                System.out.println("it is done! took a snapshot and published it");
+                            }
+                        }
+                    } else {
+                        System.out.println("Ignoring the message as the offset recieved from kafka operations topic was less than my lastSeenOffset");
+                    }
+                });
+            }
         }
-    }
+
 
     private Integer doGet(PublishedItem message) {
-        Integer res = replicatedTable.get(message.getGet().getKey());
-        if(Objects.isNull(res)) res = 0;
-        if (getResponseHashMap.containsKey(message.getGet().getXid())) {
-            System.out.println("RETURNING GET ON COMPLETED for client id : " + message.getGet().getXid().getClientid() + " with counter :" + message.getGet().getXid().getCounter());
-            StreamObserver<GetResponse> observer = getResponseHashMap.get(message.getGet().getXid());
-            observer.onNext(GetResponse.newBuilder().setValue(res).build());
-            observer.onCompleted();
-        }
+        Integer res =  null;
+//        if (isValidClientReq(message.getGet().getXid())) {
+            res = replicatedTable.get(message.getGet().getKey());
+            if (Objects.isNull(res)) res = 0;
+            System.out.println("Adding to ClientTxnLog");
+            ClientTxnLog.put(message.getGet().getXid().getClientid(), message.getGet().getXid().getCounter());
+            System.out.println("Added to ClientTxnLog");
+            if (getResponseHashMap.containsKey(message.getGet().getXid())) {
+                System.out.println("RETURNING GET ON COMPLETED for client id : " + message.getGet().getXid().getClientid() + " with counter :" + message.getGet().getXid().getCounter());
+                StreamObserver<GetResponse> observer = getResponseHashMap.get(message.getGet().getXid());
+//                if (!Objects.isNull(observer)) {
+                    observer.onNext(GetResponse.newBuilder().setValue(res).build());
+                    observer.onCompleted();
+//                    getResponseHashMap.remove(message.getInc().getXid());
+//                }
+            }
+//        } else {
+//            System.out.println("DUPLICATE GET REQ RECVD from kafka consumer..ignoringg");
+//            if (getResponseHashMap.containsKey(message.getGet().getXid())) {
+//                StreamObserver<GetResponse> observer = getResponseHashMap.get(message.getGet().getXid());
+////                if (!Objects.isNull(observer)) {
+//                    observer.onNext(GetResponse.newBuilder().build());
+//                    observer.onCompleted();
+////                    getResponseHashMap.remove(message.getInc().getXid());
+////                }
+//            }
+//        }
         return res;
     }
 
     private void doInc(PublishedItem message) {
-        replicatedTable.inc(message.getInc().getKey(), message.getInc().getIncValue());
-        if (incResponseHashMap.containsKey(message.getInc().getXid())) {
-            System.out.println("RETURNING INC ONCOMPLETED for client id : " + message.getInc().getXid().getClientid() + " with counter :" + message.getInc().getXid().getCounter());
-            StreamObserver<IncResponse> observer = incResponseHashMap.get(message.getInc().getXid());
-            observer.onNext(IncResponse.newBuilder().build());
-            observer.onCompleted();
+//        if (isValidClientReq(message.getInc().getXid())) {
+            replicatedTable.inc(message.getInc().getKey(), message.getInc().getIncValue());
+            System.out.println("Adding to ClientTxnLog");
+            ClientTxnLog.put(message.getInc().getXid().getClientid(), message.getInc().getXid().getCounter());
+            System.out.println("Added to ClientTxnLog");
+            if (incResponseHashMap.containsKey(message.getInc().getXid())) {
+                System.out.println("RETURNING INC ONCOMPLETED for client id : " + message.getInc().getXid().getClientid() + " with counter :" + message.getInc().getXid().getCounter());
+                StreamObserver<IncResponse> observer = incResponseHashMap.get(message.getInc().getXid());
+//                if (!Objects.isNull(observer)) {
+                    observer.onNext(IncResponse.newBuilder().build());
+
+                    observer.onCompleted();
+                    incResponseHashMap.remove(message.getInc().getXid());
+//                }
+            }
+//        }else {
+//            System.out.println("DUPLICATE INC REQ RECVD from kafka consumer..ignoringg");
+//            if (incResponseHashMap.containsKey(message.getInc().getXid())) {
+//                StreamObserver<IncResponse> observer = incResponseHashMap.get(message.getGet().getXid());
+////                if(!Objects.isNull(observer)) {
+//                    observer.onNext(IncResponse.newBuilder().build());
+//                    observer.onCompleted();
+////                    incResponseHashMap.remove(message.getInc().getXid());
+////                }
+//            }
+//        }
+    }
+
+    public boolean isValidClientReq(ClientXid clientXid) {
+        System.out.println("Validating Client request from Client : " + clientXid.getClientid() + " with counter : " + clientXid.getCounter());
+        if (ClientTxnLog.containsKey(clientXid.getClientid())) {
+            // for same client id the counter has to be > than the last seen counter
+            // && should not have any other pending requests
+            System.out.println("Comparing " + clientXid.getCounter() + "  with counter from map: " + ClientTxnLog.get(clientXid.getClientid()));
+            if (clientXid.getCounter() <= ClientTxnLog.get(clientXid.getClientid())) {
+                System.out.println("IGNORED : Invalid Client request from Client : " + clientXid.getClientid() + " with counter : " + clientXid.getCounter());
+                return false;
+            }
         }
+        // received the req already
+        //TODO CHECK THIS
+        //ClientTxnLog.put(clientXid.getClientid(), clientXid.getCounter());
+        System.out.println("Valid Client request from Client : " + clientXid.getClientid() + " with counter : " + clientXid.getCounter());
+        return true;
     }
 }
