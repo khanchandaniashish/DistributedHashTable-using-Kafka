@@ -27,8 +27,7 @@ public class Replica {
 
     public static Long lastSeenOperationsOffset;
 
-    //TODO getting null FFS
-    public static Long lastSeenOrderingOffset = -1L;
+    public static Long lastSeenOrderingOffset ;
 
     public static String OPERATIONS_TOPIC;
     public static String SNAPSHOT_TOPIC;
@@ -54,14 +53,15 @@ public class Replica {
         incResponseHashMap = new HashMap<>();
         getResponseHashMap = new HashMap<>();
         this.bootstrapServer = server;
-        this.name = name;
+        Replica.name = name;
         this.port = port;
-        this.snapshotDecider = snapshotDecider;
+        Replica.snapshotDecider = snapshotDecider;
         this.replicatedTable = new ReplicatedTable();
         this.topicPrefix = topicPrefix;
         OPERATIONS_TOPIC = topicPrefix + "operations";
         SNAPSHOT_TOPIC = topicPrefix + "snapshot";
         SNAPSHOT_ORDERING_TOPIC = topicPrefix + "snapshotOrdering";
+        lastSeenOrderingOffset = -1L;
 
         System.out.println("OPERATIONS_TOPIC :" + OPERATIONS_TOPIC);
         System.out.println("SNAPSHOT_TOPIC :" + SNAPSHOT_TOPIC);
@@ -70,6 +70,7 @@ public class Replica {
         initOperationsProducer();
         kafkaSnapshotConsumer = new KafkaSnapshotConsumer(bootstrapServer, replicatedTable, 0L, kafkaProducer);
         kafkaSnapshotConsumer.run();
+
         kafkaSnapshotOrderingConsumer = new KafkaSnapshotOrderingConsumer(bootstrapServer, replicatedTable, kafkaProducer);
         kafkaSnapshotOrderingConsumer.run();
         //before this next line

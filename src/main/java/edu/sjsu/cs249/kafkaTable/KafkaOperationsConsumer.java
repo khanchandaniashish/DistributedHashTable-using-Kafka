@@ -18,7 +18,6 @@ import static edu.sjsu.cs249.kafkaTable.Replica.*;
  * @author ashish
  */
 public class KafkaOperationsConsumer extends Thread {
-
     /**
      * If this thread was constructed using a separate
      * {@code Runnable} run object, then that
@@ -51,45 +50,44 @@ public class KafkaOperationsConsumer extends Thread {
 
     @Override
     public void run() {
-            System.out.println("STARTINGGG OPDS TOPICC");
-            var properties = new Properties();
-            properties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServer);
-            properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-            properties.setProperty(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "10000");
-            //TODO: Parameterize Group ID later
-            properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, name + "ConsumerGroup");
-            Consumer<String, byte[]> consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new ByteArrayDeserializer());
+        System.out.println("STARTINGGG OPDS TOPICC");
+        var properties = new Properties();
+        properties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServer);
+        properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
+        properties.setProperty(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "10000");
+        properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, name + "ConsumerGroup");
+        Consumer<String, byte[]> consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new ByteArrayDeserializer());
 
-            var sem = new Semaphore(0);
-            consumer.subscribe(List.of(OPERATIONS_TOPIC), new ConsumerRebalanceListener() {
-                @Override
-                public void onPartitionsRevoked(Collection<TopicPartition> collection) {
-                    System.out.println("Didn't expect the revoke!");
-                }
-
-                @Override
-                public void onPartitionsAssigned(Collection<TopicPartition> collection) {
-                    System.out.println("Partition assigned");
-                    System.out.println("SEEKING");
-                    collection.forEach(t -> consumer.seek(t, 0));
-                    System.out.println("SEEK DONE");
-                    sem.release();
-                }
-            });
-            //TODO Added +1 ?
-            System.out.println("lastSeenOrderingOffset is :" + lastSeenOrderingOffset);
-            lastSeenOperationsOffset = Objects.isNull(lastSeenOperationsOffset) ? 0 : lastSeenOperationsOffset;
-            System.out.println("first poll count: " + consumer.poll(lastSeenOperationsOffset + 1).count());
-            try {
-                sem.acquire();
-            } catch (InterruptedException e) {
-                e.printStackTrace();
+        var sem = new Semaphore(0);
+        consumer.subscribe(List.of(OPERATIONS_TOPIC), new ConsumerRebalanceListener() {
+            @Override
+            public void onPartitionsRevoked(Collection<TopicPartition> collection) {
+                System.out.println("Didn't expect the revoke!");
             }
 
-            System.out.println("Ready to consume at " + new Date());
-            System.out.println("Consumer successfully initialized");
+            @Override
+            public void onPartitionsAssigned(Collection<TopicPartition> collection) {
+                System.out.println("Partition assigned");
+                System.out.println("SEEKING");
+                collection.forEach(t -> consumer.seek(t, 0));
+                System.out.println("SEEK DONE");
+                sem.release();
+            }
+        });
+        System.out.println("first poll count: " + consumer.poll(0).count());
+        System.out.println("lastSeenOperationsOffset is :" + lastSeenOperationsOffset);
+        lastSeenOperationsOffset = lastSeenOperationsOffset == -1 ? 0 : lastSeenOperationsOffset;
+        System.out.println("lastSeenOperationsOffset after update is :" + lastSeenOperationsOffset);
+        try {
+            sem.acquire();
+        } catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        System.out.println("Ready to consume at " + new Date());
+        System.out.println("Consumer successfully initialized");
 
-            while (true) {
+        while (true) {
+            synchronized (replicatedTable) {
                 ConsumerRecords<String, byte[]> consumerRecords = consumer.poll(Duration.ofSeconds(1));
                 consumerRecords.forEach(record -> {
                     System.out.printf("offset = %d, key = %s, value = %s%n", lastSeenOperationsOffset, record.key(), Arrays.toString(record.value()));
@@ -118,11 +116,18 @@ public class KafkaOperationsConsumer extends Thread {
                             }
                         }
                     } else {
-                        System.out.println("Ignoring the message as the offset recieved from kafka operations topic was less than my lastSeenOffset");
+                        System.out.println("Ignoring the message as the offset recieved from kafka operations topic was less than my lastSeenOffset and this wont be counted in the ops modding");
                     }
                 });
             }
+            try {
+                Thread.sleep(50);
+            } catch (InterruptedException e) {
+                throw new RuntimeException(e);
+            }
         }
+
+    }
 
 
     private Integer doGet(PublishedItem message) {
@@ -185,9 +190,6 @@ public class KafkaOperationsConsumer extends Thread {
                 return false;
             }
         }
-        // received the req already
-        //TODO CHECK THIS
-        //ClientTxnLog.put(clientXid.getClientid(), clientXid.getCounter());
         System.out.println("Valid Client request from Client : " + clientXid.getClientid() + " with counter : " + clientXid.getCounter());
         return true;
     }

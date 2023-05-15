@@ -32,7 +32,7 @@ public class KafkaTableGrpcService extends KafkaTableGrpc.KafkaTableImplBase {
      */
     @Override
     public void inc(IncRequest request, StreamObserver<IncResponse> responseObserver) {
-
+        synchronized (replicatedTable) {
             //Check if Client req is valid
             ClientXid clientXid = request.getXid();
 
@@ -52,6 +52,7 @@ public class KafkaTableGrpcService extends KafkaTableGrpc.KafkaTableImplBase {
                 responseObserver.onCompleted();
             }
         }
+    }
 
 
     /**
@@ -63,7 +64,6 @@ public class KafkaTableGrpcService extends KafkaTableGrpc.KafkaTableImplBase {
         //publish to OP topic
 
             ClientXid clientXid = request.getXid();
-
             if (isValidClientReq(clientXid)) {
                 // publish to OP topic
                 System.out.println("publishing GET req to kafka OP topic : " + OPERATIONS_TOPIC);
@@ -81,13 +81,6 @@ public class KafkaTableGrpcService extends KafkaTableGrpc.KafkaTableImplBase {
                 responseObserver.onNext(GetResponse.newBuilder().build());
                 responseObserver.onCompleted();
             }
-        }
-
-
-    void recordClientTransaction(ClientXid clientXid) {
-        System.out.println("Adding Client request to ClientTxnMap from Client : " + clientXid.getClientid() + " with counter : " + clientXid.getCounter());
-        ClientTxnLog.put(clientXid.getClientid(), clientXid.getCounter());
-        System.out.println("Added Client request to ClientTxnMap from Client : " + clientXid.getClientid() + " with counter : " + clientXid.getCounter());
     }
 
     public boolean isValidClientReq(ClientXid clientXid) {

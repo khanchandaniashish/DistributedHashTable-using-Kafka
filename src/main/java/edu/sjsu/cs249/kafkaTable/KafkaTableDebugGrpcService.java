@@ -21,13 +21,15 @@ public class KafkaTableDebugGrpcService extends KafkaTableDebugGrpc.KafkaTableDe
      */
     @Override
     public void debug(KafkaTableDebugRequest request, StreamObserver<KafkaTableDebugResponse> responseObserver) {
-        System.out.println(replica.replicatedTable.toString());
-        System.out.println(ClientTxnLog);
-        System.out.println("Debug GRPC called");
-        Snapshot snapshot = Snapshot.newBuilder().setReplicaId(name).putAllTable(replica.replicatedTable.hashtable).setOperationsOffset(lastSeenOperationsOffset).putAllClientCounters(ClientTxnLog).setSnapshotOrderingOffset(lastSeenOrderingOffset).build();
-        responseObserver.onNext(KafkaTableDebugResponse.newBuilder().setSnapshot(snapshot).build());
-        responseObserver.onCompleted();
-        System.out.println("Debug GRPC returned");
+        synchronized (replica.replicatedTable) {
+            System.out.println(replica.replicatedTable.toString());
+            System.out.println(ClientTxnLog);
+            System.out.println("Debug GRPC called");
+            Snapshot snapshot = Snapshot.newBuilder().setReplicaId(name).putAllTable(replica.replicatedTable.hashtable).setOperationsOffset(lastSeenOperationsOffset).putAllClientCounters(ClientTxnLog).setSnapshotOrderingOffset(lastSeenOrderingOffset).build();
+            responseObserver.onNext(KafkaTableDebugResponse.newBuilder().setSnapshot(snapshot).build());
+            responseObserver.onCompleted();
+            System.out.println("Debug GRPC returned");
+        }
     }
 
     /**

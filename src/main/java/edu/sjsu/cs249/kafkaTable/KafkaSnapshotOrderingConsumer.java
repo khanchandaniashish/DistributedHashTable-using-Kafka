@@ -41,14 +41,17 @@ public class KafkaSnapshotOrderingConsumer {
         properties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServer);
         properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         properties.setProperty(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "10000");
-        //TODO: Parameterize Group ID later
         properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, name + "ConsumerGroupSnapshotOrdering");
         consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new ByteArrayDeserializer());
+
         properties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG,"1");
+        properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, name + "ConsumerGroupSnapshotOrdering1");
         secondConsumerConfig = new KafkaConsumer<>(properties, new StringDeserializer(), new ByteArrayDeserializer());
-        //Seeks consumer to specified offset and inititialises listener from there
-        System.out.println("lastSeenOrderingOffset is :"+lastSeenOrderingOffset+1);
-        initializeAndSeekConsumer(consumer,lastSeenOrderingOffset+1);
+
+        lastSeenOrderingOffset = lastSeenOrderingOffset ==-1 ? 0: lastSeenOrderingOffset;
+        System.out.println("lastSeenOrderingOffset is :"+lastSeenOrderingOffset);
+
+        initializeAndSeekConsumer(consumer,lastSeenOrderingOffset);
         ConsumerRecords<String, byte[]> consumerRecords = consumer.poll(Duration.ofSeconds(1));
         joinTheSnapshotOrdering(consumerRecords);
     }
@@ -78,11 +81,8 @@ public class KafkaSnapshotOrderingConsumer {
         //Reset the offset to zero
         System.out.println("Resetting Ordering Snapshot to beginning");
         consumer.unsubscribe();
-        lastSeenOperationsOffset = 0l;
-        System.out.println("lastSeenOperationsOffset from resetOffsetToBeginning is "+ lastSeenOperationsOffset);
-        initializeAndSeekConsumer(secondConsumerConfig,lastSeenOperationsOffset);
-//        Collection<TopicPartition> collection = consumer.assignment();
-//        collection.forEach(t -> consumer.seek(t, 0));
+        System.out.println("lastSeenOrderingOffset from resetOffsetToBeginning is "+ lastSeenOrderingOffset);
+        initializeAndSeekConsumer(secondConsumerConfig,lastSeenOrderingOffset);
     }
 
     public boolean isTimeToPublishSnapshot(){
@@ -124,13 +124,12 @@ public class KafkaSnapshotOrderingConsumer {
             public void onPartitionsAssigned(Collection<TopicPartition> collection) {
                 System.out.println("Partition assigned");
                 System.out.println("SEEKING");
-                collection.forEach(t -> passedConsumer.seek(t, offsetToBeginFrom+1));
+                collection.forEach(t -> passedConsumer.seek(t, offsetToBeginFrom));
                 System.out.println("SEEK DONE");
                 sem.release();
             }
         });
-
-        System.out.println("first poll count: " + passedConsumer.poll(offsetToBeginFrom+1).count());
+        System.out.println("first poll count: " + passedConsumer.poll(0).count());
         try {
             sem.acquire();
         } catch (InterruptedException e) {
