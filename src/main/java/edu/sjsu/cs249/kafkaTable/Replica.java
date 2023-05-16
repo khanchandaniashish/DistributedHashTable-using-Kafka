@@ -27,7 +27,7 @@ public class Replica {
 
     public static Long lastSeenOperationsOffset;
 
-    public static Long lastSeenOrderingOffset ;
+    public static Long lastSeenOrderingOffset;
 
     public static String OPERATIONS_TOPIC;
     public static String SNAPSHOT_TOPIC;
@@ -75,7 +75,7 @@ public class Replica {
         kafkaSnapshotOrderingConsumer.run();
         //before this next line
         System.out.println("STARTINGGG OPSSSS");
-        operationsConsumer = new KafkaOperationsConsumer(bootstrapServer, replicatedTable, incResponseHashMap, kafkaSnapshotOrderingConsumer,kafkaSnapshotConsumer, getResponseHashMap);
+        operationsConsumer = new KafkaOperationsConsumer(bootstrapServer, replicatedTable, incResponseHashMap, kafkaSnapshotOrderingConsumer, kafkaSnapshotConsumer, getResponseHashMap);
         operationsConsumer.start();
     }
 

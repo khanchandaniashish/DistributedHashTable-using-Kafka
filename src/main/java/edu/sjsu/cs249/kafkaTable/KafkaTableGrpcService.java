@@ -3,6 +3,7 @@ package edu.sjsu.cs249.kafkaTable;
 import io.grpc.stub.StreamObserver;
 
 import java.util.HashMap;
+import java.util.Objects;
 
 import static edu.sjsu.cs249.kafkaTable.Replica.OPERATIONS_TOPIC;
 
@@ -42,9 +43,6 @@ public class KafkaTableGrpcService extends KafkaTableGrpc.KafkaTableImplBase {
                 PublishedItem publishedItem = PublishedItem.newBuilder().setInc(request).build();
                 replica.sendMessage(OPERATIONS_TOPIC, publishedItem);
                 incResponseHashMap.put(clientXid, responseObserver);
-                //Update the Client Transaction map
-                //TODO TESTING THIS
-//                recordClientTransaction(clientXid);
                 System.out.println("published inc req to kafka op topic");
             } else {
                 System.out.println("RETURNING INC ONCOMPLETED for INVALID req with client id : " + clientXid.getClientid() + " with counter :" + clientXid.getCounter());
@@ -62,25 +60,25 @@ public class KafkaTableGrpcService extends KafkaTableGrpc.KafkaTableImplBase {
     @Override
     public void get(GetRequest request, StreamObserver<GetResponse> responseObserver) {
         //publish to OP topic
-
+        synchronized (replicatedTable) {
             ClientXid clientXid = request.getXid();
             if (isValidClientReq(clientXid)) {
                 // publish to OP topic
                 System.out.println("publishing GET req to kafka OP topic : " + OPERATIONS_TOPIC);
                 PublishedItem publishedItem = PublishedItem.newBuilder().setGet(request).build();
-//            replica.sendMessage(OPERATIONS_TOPIC, publishedItem);
                 getResponseHashMap.put(clientXid, responseObserver);
-                //Update the Client Transaction map
-                //TODO TESTING THIS
-//            recordClientTransaction(clientXid);
+
                 System.out.println("publishing get req to kafka OP topic : " + OPERATIONS_TOPIC);
                 replica.sendMessage(OPERATIONS_TOPIC, publishedItem);
                 System.out.println("published get req to kafka OP topic");
             } else {
                 System.out.println("RETURNING get ONCOMPLETED for INVALID req with client id : " + clientXid.getClientid() + " with counter :" + clientXid.getCounter());
-                responseObserver.onNext(GetResponse.newBuilder().build());
+                Integer res = replicatedTable.hashtable.containsKey(request.getKey()) ? replicatedTable.hashtable.get(request.getKey()) : 0;
+                if (Objects.isNull(res)) res = 0;
+                responseObserver.onNext(GetResponse.newBuilder().setValue(res).build());
                 responseObserver.onCompleted();
             }
+        }
     }
 
     public boolean isValidClientReq(ClientXid clientXid) {

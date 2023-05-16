@@ -39,6 +39,8 @@ public class KafkaTableDebugGrpcService extends KafkaTableDebugGrpc.KafkaTableDe
     @Override
     public void exit(ExitRequest request, StreamObserver<ExitResponse> responseObserver) {
         System.out.println("RUN FOREST RUN!");
+        responseObserver.onNext(ExitResponse.newBuilder().build());
+        responseObserver.onCompleted();
         System.exit(0);
     }
 }

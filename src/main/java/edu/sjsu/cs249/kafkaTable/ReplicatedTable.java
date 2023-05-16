@@ -8,17 +8,26 @@ import java.util.Map;
  */
 public class ReplicatedTable {
 
-    HashMap<String,Integer> hashtable;
+    HashMap<String, Integer> hashtable;
 
-    ReplicatedTable(){hashtable = new HashMap<>();}
+    ReplicatedTable() {
+        hashtable = new HashMap<>();
+    }
 
-    Integer get(String key){return hashtable.get(key);}
+    Integer get(String key) {
+        return hashtable.get(key);
+    }
 
-    void inc(String key,int value){
-        int updatedValue = hashtable.getOrDefault(key,0) + value;
-        System.out.println("New value :"+ updatedValue);
-        hashtable.put(key,updatedValue);
-        System.out.println("Updated key: "+ key + " with  updatedValue: "+ updatedValue);
+    void inc(String key, int value) {
+        int updatedValue = hashtable.getOrDefault(key, 0) + value;
+        System.out.println("New value :" + updatedValue);
+        if(updatedValue >= 0) {
+            hashtable.put(key, updatedValue);
+            System.out.println("Updated key: " + key + " with  updatedValue: " + updatedValue);
+        }
+        else{
+            System.out.println("INC NOT APPLIED as inc was going below zero. Skipped key: " + key + " with  value: " + value);
+        }
     }
 
     @Override
@@ -29,12 +38,12 @@ public class ReplicatedTable {
                 '}';
     }
 
-    public void sync(Map<String,Integer> SnapshotMap){
-        System.out.println("Pre Sync map: "+ hashtable.toString());
+    public void sync(Map<String, Integer> SnapshotMap) {
+        System.out.println("Pre Sync map: " + hashtable.toString());
         hashtable.clear();
-        for (String key: SnapshotMap.keySet()) {
+        for (String key : SnapshotMap.keySet()) {
             hashtable.put(key, SnapshotMap.get(key));
         }
-        System.out.println("Synced map with Snap Map : "+ hashtable.toString());
+        System.out.println("Synced map with Snap Map : " + hashtable.toString());
     }
 }

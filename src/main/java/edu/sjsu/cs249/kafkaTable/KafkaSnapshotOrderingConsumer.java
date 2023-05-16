@@ -35,7 +35,7 @@ public class KafkaSnapshotOrderingConsumer {
         this.producer = operationsProducer;
     }
 
-//    @Override
+    //    @Override
     public void run() {
         var properties = new Properties();
         properties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServer);
@@ -44,14 +44,14 @@ public class KafkaSnapshotOrderingConsumer {
         properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, name + "ConsumerGroupSnapshotOrdering");
         consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new ByteArrayDeserializer());
 
-        properties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG,"1");
+        properties.setProperty(ConsumerConfig.MAX_POLL_RECORDS_CONFIG, "1");
         properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, name + "ConsumerGroupSnapshotOrdering1");
         secondConsumerConfig = new KafkaConsumer<>(properties, new StringDeserializer(), new ByteArrayDeserializer());
 
-        lastSeenOrderingOffset = lastSeenOrderingOffset ==-1 ? 0: lastSeenOrderingOffset;
-        System.out.println("lastSeenOrderingOffset is :"+lastSeenOrderingOffset);
+        lastSeenOrderingOffset = lastSeenOrderingOffset == -1 ? 0 : lastSeenOrderingOffset;
+        System.out.println("lastSeenOrderingOffset is :" + lastSeenOrderingOffset);
 
-        initializeAndSeekConsumer(consumer,lastSeenOrderingOffset);
+        initializeAndSeekConsumer(consumer, lastSeenOrderingOffset);
         ConsumerRecords<String, byte[]> consumerRecords = consumer.poll(Duration.ofSeconds(1));
         joinTheSnapshotOrdering(consumerRecords);
     }
@@ -81,19 +81,19 @@ public class KafkaSnapshotOrderingConsumer {
         //Reset the offset to zero
         System.out.println("Resetting Ordering Snapshot to beginning");
         consumer.unsubscribe();
-        System.out.println("lastSeenOrderingOffset from resetOffsetToBeginning is "+ lastSeenOrderingOffset);
-        initializeAndSeekConsumer(secondConsumerConfig,lastSeenOrderingOffset);
+        System.out.println("lastSeenOrderingOffset from resetOffsetToBeginning is " + lastSeenOrderingOffset);
+        initializeAndSeekConsumer(secondConsumerConfig, lastSeenOrderingOffset);
     }
 
-    public boolean isTimeToPublishSnapshot(){
+    public boolean isTimeToPublishSnapshot() {
         ConsumerRecords<String, byte[]> consumerRecords = secondConsumerConfig.poll(Duration.ofSeconds(1));
         System.out.println("polling for 1 seconds");
         //TODO HERE
-        System.out.println("POSITION is : "+( secondConsumerConfig.position(new TopicPartition(SNAPSHOT_ORDERING_TOPIC, 0)) - 1));
-        System.out.println("Consumer records count is  "+ consumerRecords.count());
+        System.out.println("POSITION is : " + (secondConsumerConfig.position(new TopicPartition(SNAPSHOT_ORDERING_TOPIC, 0)) - 1));
+        System.out.println("Consumer records count is  " + consumerRecords.count());
         for (var consumerRecord : consumerRecords) {
             try {
-                System.out.println("lastSeenOrderingOffset updated to "+ consumerRecord.offset());
+                System.out.println("lastSeenOrderingOffset updated to " + consumerRecord.offset());
                 lastSeenOrderingOffset = consumerRecord.offset();
                 var message = SnapshotOrdering.parseFrom(consumerRecord.value());
                 System.out.println("Consumed message from KafkaSnapshotOrderingConsumer: " + message);
@@ -110,8 +110,8 @@ public class KafkaSnapshotOrderingConsumer {
         return false;
     }
 
-    private  void initializeAndSeekConsumer(Consumer<String, byte[]> passedConsumer,Long offsetToBeginFrom) {
-        System.out.println("Called initializeAndSeekConsumer with offsetToBeginFrom: "+offsetToBeginFrom);
+    private void initializeAndSeekConsumer(Consumer<String, byte[]> passedConsumer, Long offsetToBeginFrom) {
+        System.out.println("Called initializeAndSeekConsumer with offsetToBeginFrom: " + offsetToBeginFrom);
         var sem = new Semaphore(0);
 
         passedConsumer.subscribe(List.of(SNAPSHOT_ORDERING_TOPIC), new ConsumerRebalanceListener() {
@@ -139,11 +139,11 @@ public class KafkaSnapshotOrderingConsumer {
         System.out.println("Consumer successfully initialized");
     }
 
-    void sendMessage(SnapshotOrdering message){
+    void sendMessage(SnapshotOrdering message) {
         if (!Objects.isNull(producer)) {
             var record = new ProducerRecord<String, byte[]>(SNAPSHOT_ORDERING_TOPIC, message.toByteArray());
             producer.send(record);
-            System.out.println("Publish to SNAPSHOT_ORDERING_TOPIC and joined the que as : "+ Replica.name);
+            System.out.println("Publish to SNAPSHOT_ORDERING_TOPIC and joined the que as : " + Replica.name);
         }
     }
 

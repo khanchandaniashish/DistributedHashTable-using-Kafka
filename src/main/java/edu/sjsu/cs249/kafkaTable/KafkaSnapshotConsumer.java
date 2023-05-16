@@ -2,14 +2,20 @@ package edu.sjsu.cs249.kafkaTable;
 
 import com.google.protobuf.InvalidProtocolBufferException;
 import org.apache.kafka.clients.admin.AdminClientConfig;
-import org.apache.kafka.clients.consumer.*;
+import org.apache.kafka.clients.consumer.Consumer;
+import org.apache.kafka.clients.consumer.ConsumerConfig;
+import org.apache.kafka.clients.consumer.ConsumerRecords;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerRecord;
 import org.apache.kafka.common.serialization.ByteArrayDeserializer;
 import org.apache.kafka.common.serialization.StringDeserializer;
 
 import java.time.Duration;
-import java.util.*;
+import java.util.Arrays;
+import java.util.List;
+import java.util.Objects;
+import java.util.Properties;
 
 import static edu.sjsu.cs249.kafkaTable.Replica.*;
 
@@ -29,13 +35,12 @@ public class KafkaSnapshotConsumer {
         this.producer = operationsProducer;
     }
 
-    //    @Override
     public void run() {
         var properties = new Properties();
         properties.put(AdminClientConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServer);
         properties.setProperty(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
         properties.setProperty(ConsumerConfig.SESSION_TIMEOUT_MS_CONFIG, "10000");
-        properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, name+"ConsumerGroup1");
+        properties.setProperty(ConsumerConfig.GROUP_ID_CONFIG, name + "ConsumerGroup1");
         Consumer<String, byte[]> consumer = new KafkaConsumer<>(properties, new StringDeserializer(), new ByteArrayDeserializer());
         System.out.println("Snapshot Consumer successfully initialized");
 
@@ -81,7 +86,7 @@ public class KafkaSnapshotConsumer {
                 .putAllClientCounters(Replica.ClientTxnLog)
                 .setSnapshotOrderingOffset(lastSeenOrderingOffset)
                 .build();
-        System.out.println("Publishing : "+ snapshot);
+        System.out.println("Publishing : " + snapshot);
         //publish snapshot
         sendMessage(snapshot.toByteArray(), SNAPSHOT_TOPIC);
         //join the Que again
